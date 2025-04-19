@@ -375,12 +375,12 @@ const SettingsPage: React.FC = () => {
               <p className="text-gray-700">
                 For more support or to report issues, please visit our GitHub repository at{' '}
                 <a 
-                  href="https://github.com/manasdutta04/truthlens" 
+                  href="https://github.com/manasdutta04/truthlens-extension" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-truthlens-primary hover:underline"
                 >
-                  github.com/manasdutta04/truthlens
+                  github.com/manasdutta04/truthlens-extension
                 </a>
               </p>
             </div>
