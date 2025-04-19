@@ -1,0 +1,404 @@
+import { ArticleData, AnalysisResult, AnalysisData, ExtensionSettings } from './types';
+import { currentAnalysis, defaultSettings } from './globals';
+
+// Local settings object - initialized from stored settings
+let settings: ExtensionSettings = {...defaultSettings};
+
+// Main initialization function
+function initialize(): void {
+  console.log('TruthLens content script initialized');
+  
+  // Add message listener for communications with popup and background scripts
+  chrome.runtime.onMessage.addListener(handleMessages);
+  
+  // Check if auto-analyze is enabled
+  chrome.storage.local.get('settings', (data) => {
+    if (data.settings) {
+      settings = data.settings;
+    }
+    
+    if (settings.autoAnalyze && isNewsArticle()) {
+      // Auto-analyze after page is fully loaded
+      setTimeout(() => {
+        extractArticleData()
+          .then(data => {
+            if (data) {
+              sendAnalysisRequest(data);
+            }
+          })
+          .catch(err => console.error('Error during auto-analysis:', err));
+      }, 1500); // Wait for page to stabilize
+    }
+  });
+}
+
+// Extract article data from the current page
+async function extractArticleData(): Promise<ArticleData | null> {
+  try {
+    const url = window.location.href;
+    
+    // Skip non-article pages
+    if (!isNewsArticle()) {
+      console.log('This does not appear to be a news article');
+      return null;
+    }
+    
+    let title = '';
+    let content = '';
+    
+    // Try to extract using metadata tags first (most reliable)
+    const metaTitleEl = document.querySelector('meta[property="og:title"], meta[name="twitter:title"], meta[name="title"]');
+    if (metaTitleEl) {
+      title = metaTitleEl.getAttribute('content') || '';
+    }
+    
+    // Fallback to document title if no meta title
+    if (!title) {
+      title = document.title;
+    }
+    
+    // Try to extract content using article or main elements
+    const contentElements = document.querySelectorAll('article, [role="article"], .article-content, .article-body, main');
+    if (contentElements.length > 0) {
+      // Use the first content element that has substantial text
+      for (const el of contentElements) {
+        const text = el.textContent?.trim() || '';
+        if (text.length > 500) {
+          content = text;
+          break;
+        }
+      }
+    }
+    
+    // If we still don't have content, try to extract paragraphs within the main content area
+    if (!content) {
+      const paragraphs = document.querySelectorAll('p');
+      if (paragraphs.length > 0) {
+        const contentArray = Array.from(paragraphs)
+          .filter(p => p.textContent?.length || 0 > 50) // Filter out small paragraphs
+          .map(p => p.textContent?.trim() || '')
+          .filter(text => text.length > 0);
+        
+        if (contentArray.length > 0) {
+          content = contentArray.join('\n\n');
+        }
+      }
+    }
+    
+    // Check if we have enough content to analyze
+    if (title && content && content.length > 200) {
+      // Extract source from URL
+      const source = new URL(url).hostname;
+      
+      return { title, content, url, source };
+    } else {
+      console.log('Could not extract sufficient article content');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error extracting article data:', error);
+    return null;
+  }
+}
+
+// Send analysis request to the background script
+function sendAnalysisRequest(articleData: ArticleData): void {
+  chrome.runtime.sendMessage(
+    { 
+      action: 'analyzeArticle',
+      articleData
+    },
+    (response) => {
+      if (response && response.success && response.data) {
+        // Store the analysis result - convert to our AnalysisData structure
+        const analysisData: AnalysisData = {
+          article: response.data.articleData,
+          result: response.data.result,
+          timestamp: Date.now()
+        };
+        
+        // Update the global analysis variable
+        // Using chrome.storage to update the currentAnalysis in globals
+        chrome.runtime.sendMessage({ 
+          action: 'updateAnalysisResult', 
+          data: analysisData 
+        });
+        
+        // Show notification if enabled
+        showAnalysisNotification(analysisData);
+      } else {
+        console.error('Analysis request failed:', response?.error || 'Unknown error');
+      }
+    }
+  );
+}
+
+// Show a notification with the analysis result
+function showAnalysisNotification(analysis: AnalysisData): void {
+  chrome.storage.local.get('settings', (data) => {
+    const settings = data.settings || defaultSettings;
+    
+    if (settings.notifyLowTrust) {
+      const score = Math.round(analysis.result.trustworthiness * 100);
+      const trustLevel = getTrustLevel(analysis.result.trustworthiness);
+      
+      // Create a div for the notification
+      const notification = document.createElement('div');
+      notification.className = 'truthlens-notification';
+      notification.innerHTML = `
+        <div class="truthlens-notification-header">
+          <img src="${chrome.runtime.getURL('icons/icon48.png')}" alt="TruthLens" />
+          <span>TruthLens Analysis</span>
+          <button class="truthlens-close-btn">×</button>
+        </div>
+        <div class="truthlens-notification-content">
+          <p>Credibility Score: <strong>${score}%</strong></p>
+          <p>Trust Level: <strong>${trustLevel.charAt(0).toUpperCase() + trustLevel.slice(1)}</strong></p>
+          <p>Click for more details</p>
+        </div>
+      `;
+      
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        .truthlens-notification {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          width: 300px;
+          background-color: white;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 10000;
+          font-family: Arial, sans-serif;
+          transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        .truthlens-notification.show {
+          transform: translateY(0);
+          opacity: 1;
+        }
+        .truthlens-notification-header {
+          display: flex;
+          align-items: center;
+          padding: 10px 15px;
+          background-color: #f8f9fa;
+          border-top-left-radius: 8px;
+          border-top-right-radius: 8px;
+          border-bottom: 1px solid #eaecef;
+        }
+        .truthlens-notification-header img {
+          width: 20px;
+          height: 20px;
+          margin-right: 10px;
+        }
+        .truthlens-notification-header span {
+          flex-grow: 1;
+          font-weight: bold;
+        }
+        .truthlens-close-btn {
+          background: none;
+          border: none;
+          font-size: 20px;
+          cursor: pointer;
+          color: #606770;
+        }
+        .truthlens-notification-content {
+          padding: 15px;
+        }
+        .truthlens-notification-content p {
+          margin: 5px 0;
+        }
+      `;
+      
+      // Add to DOM
+      document.body.appendChild(style);
+      document.body.appendChild(notification);
+      
+      // Show notification with animation
+      setTimeout(() => {
+        notification.classList.add('show');
+      }, 100);
+      
+      // Add click handlers
+      notification.querySelector('.truthlens-close-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notification.classList.remove('show');
+        setTimeout(() => {
+          notification.remove();
+          style.remove();
+        }, 300);
+      });
+      
+      notification.addEventListener('click', () => {
+        // Open the popup
+        chrome.runtime.sendMessage({ action: 'openPopup' });
+        notification.classList.remove('show');
+        setTimeout(() => {
+          notification.remove();
+          style.remove();
+        }, 300);
+      });
+      
+      // Auto-hide after 8 seconds
+      setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+          notification.remove();
+          style.remove();
+        }, 300);
+      }, 8000);
+    }
+  });
+}
+
+// Helper function to convert trustworthiness to trust level
+function getTrustLevel(trustworthiness: number): string {
+  if (trustworthiness >= 0.7) return 'high';
+  if (trustworthiness >= 0.4) return 'medium';
+  return 'low';
+}
+
+// Check if current page is likely a news article
+function isNewsArticle(): boolean {
+  // Check URL patterns common for news sites
+  const url = window.location.hostname;
+  const newsDomainsPatterns = [
+    /news/i, /article/i, /blog/i, /politics/i, /opinion/i,
+    /(\.com|\.org|\.net)\/([^\/]+\/)?[^\/]+\/(news|article|story|post)/i
+  ];
+  
+  const isNewsUrl = newsDomainsPatterns.some(pattern => 
+    pattern.test(url) || pattern.test(window.location.pathname)
+  );
+  
+  // Check for common news site meta tags
+  const hasNewsMetaTags = !!document.querySelector(
+    'meta[property="og:type"][content="article"], ' +
+    'meta[name="article:published_time"], ' +
+    'meta[property="article:published_time"], ' +
+    'meta[name="article:author"], ' +
+    'meta[property="article:author"]'
+  );
+  
+  // Check for structural elements common in news articles
+  const hasArticleStructure = !!document.querySelector(
+    'article, [role="article"], .article, .article-content, .article-body, ' +
+    '.story, .story-body, .news-article, .post-content'
+  );
+  
+  // Check if page has substantial paragraph content
+  const paragraphs = document.querySelectorAll('p');
+  const hasManyParagraphs = paragraphs.length > 5;
+  
+  // Combined heuristic
+  return (isNewsUrl || hasNewsMetaTags || hasArticleStructure) && hasManyParagraphs;
+}
+
+// Handle messages from popup and background scripts
+function handleMessages(message: any, sender: chrome.runtime.MessageSender, sendResponse: (response: any) => void): boolean {
+  console.log('Content script received message:', message.action);
+  
+  switch (message.action) {
+    case 'analyzeArticle':
+      // Extract article data and request analysis
+      console.log('Analyzing article from content script');
+      extractArticleData()
+        .then(data => {
+          if (data) {
+            console.log('Article data extracted successfully:', data.title);
+            // Send directly to background script for analysis
+            try {
+              chrome.runtime.sendMessage(
+                { 
+                  action: 'analyzeArticle',
+                  articleData: data
+                },
+                (response) => {
+                  console.log('Background analysis response:', response);
+                  
+                  if (chrome.runtime.lastError) {
+                    console.error('Error sending message to background:', chrome.runtime.lastError);
+                    sendResponse({ 
+                      success: false, 
+                      error: 'Error communicating with background: ' + chrome.runtime.lastError.message
+                    });
+                    return;
+                  }
+                  
+                  if (response && response.success && response.data) {
+                    console.log('Analysis successful, storing result');
+                    // Convert to our AnalysisData structure
+                    const analysisData: AnalysisData = {
+                      article: response.data.articleData,
+                      result: response.data.result,
+                      timestamp: Date.now()
+                    };
+                    
+                    // Update the global currentAnalysis through a message
+                    chrome.runtime.sendMessage({
+                      action: 'saveAnalysisResult',
+                      data: analysisData
+                    });
+                    
+                    sendResponse({ success: true, data: analysisData });
+                  } else {
+                    console.error('Analysis failed:', response?.error || 'Unknown error');
+                    sendResponse({ 
+                      success: false, 
+                      error: response?.error || 'Failed to analyze article' 
+                    });
+                  }
+                }
+              );
+            } catch (error) {
+              console.error('Error during analysis:', error);
+              sendResponse({ 
+                success: false, 
+                error: 'Error during analysis: ' + (error as Error).message 
+              });
+            }
+          } else {
+            console.warn('Could not extract article data from this page');
+            sendResponse({ 
+              success: false, 
+              error: 'Could not extract article data from this page' 
+            });
+          }
+        })
+        .catch(err => {
+          console.error('Error extracting article data:', err);
+          sendResponse({ 
+            success: false, 
+            error: 'Error extracting article data: ' + err.message 
+          });
+        });
+      return true; // Will respond asynchronously
+      
+    case 'getCurrentAnalysis':
+      // Get the current analysis from globals through a message
+      chrome.runtime.sendMessage({ action: 'getCurrentAnalysis' }, (response) => {
+        if (response && response.hasAnalysis) {
+          sendResponse({ hasAnalysis: true, data: response.data });
+        } else {
+          sendResponse({ hasAnalysis: false });
+        }
+      });
+      return true; // Will respond asynchronously
+      
+    case 'isNewsArticle':
+      // Check if current page is likely a news article
+      const isArticle = isNewsArticle();
+      console.log('Is news article check:', isArticle);
+      sendResponse({ isNewsArticle: isArticle });
+      return false; // Responded synchronously
+      
+    default:
+      console.warn('Unknown message action:', message.action);
+      return false; // Not handled
+  }
+}
+
+// Initialize the content script
+initialize(); 

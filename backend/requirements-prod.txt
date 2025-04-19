@@ -1,0 +1,39 @@
+# Core dependencies
+fastapi==0.105.0
+uvicorn==0.24.0
+pydantic==2.5.2
+python-dotenv==1.0.0
+loguru==0.7.2
+
+# Web server for production
+gunicorn==21.2.0
+
+# Blockchain interaction
+web3==6.11.1
+eth-account==0.8.0
+eth-utils==2.3.0
+
+# NLP dependencies (minimal for production)
+transformers==4.35.2
+torch>=2.1.0
+numpy==1.26.2
+scikit-learn==1.3.2
+
+# Caching and data processing
+redis==5.0.1
+lxml[html_clean]>=5.0.0
+newspaper3k==0.2.8
+python-multipart==0.0.6
+requests==2.31.0
+aiohttp==3.9.1
+
+# Security and monitoring
+python-jose[cryptography]==3.3.0  # For JWT tokens
+passlib[bcrypt]==1.7.4           # For password hashing
+prometheus-client==0.17.1        # For metrics collection
+tenacity==8.2.3                  # For retrying operations
+
+# Production dependencies
+psycopg2-binary==2.9.9
+uvloop==0.19.0
+httptools==0.6.1 

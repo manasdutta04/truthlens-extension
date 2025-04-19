@@ -1,0 +1,17 @@
+fastapi==0.105.0
+uvicorn==0.24.0
+pydantic==2.5.2
+python-dotenv==1.0.0
+transformers==4.35.2
+torch>=2.1.0
+numpy==1.26.2
+redis==5.0.1
+# Fix for lxml html_clean dependency
+lxml[html_clean]>=5.0.0
+newspaper3k==0.2.8
+python-multipart==0.0.6
+web3==6.11.1
+requests==2.31.0
+aiohttp==3.9.1
+scikit-learn==1.3.2
+loguru==0.7.2 

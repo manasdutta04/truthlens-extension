@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium transition-colors;
+  }
+  
+  .btn-primary {
+    @apply bg-truthlens-primary text-white hover:bg-truthlens-primary/90;
+  }
+  
+  .btn-secondary {
+    @apply bg-truthlens-secondary text-white hover:bg-truthlens-secondary/90;
+  }
+  
+  .badge {
+    @apply px-2 py-1 rounded-full text-xs font-semibold;
+  }
+  
+  .badge-success {
+    @apply bg-truthlens-success text-white;
+  }
+  
+  .badge-warning {
+    @apply bg-truthlens-warning text-white;
+  }
+  
+  .badge-danger {
+    @apply bg-truthlens-danger text-white;
+  }
+  
+  .truthlens-container {
+    @apply font-sans text-gray-800 bg-white rounded-lg shadow-lg p-4 border border-gray-200;
+  }
+} 

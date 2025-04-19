@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TruthLens Debug</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      padding: 20px;
+      background-color: #f8f9fa;
+      color: #333;
+    }
+    h1 {
+      color: #3b82f6;
+    }
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .section h2 {
+      margin-top: 0;
+      color: #3b82f6;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    pre {
+      background-color: #f0f0f0;
+      padding: 10px;
+      border-radius: 4px;
+      overflow: auto;
+      max-height: 300px;
+    }
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    button:hover {
+      background-color: #2563eb;
+    }
+    .success {
+      color: #10b981;
+    }
+    .error {
+      color: #ef4444;
+    }
+  </style>
+  <script src="utils.js"></script>
+</head>
+<body>
+  <h1>TruthLens Debug Console</h1>
+  
+  <div class="section">
+    <h2>Environment Information</h2>
+    <div id="environment-info"></div>
+  </div>
+  
+  <div class="section">
+    <h2>API Connection Test</h2>
+    <div>
+      <button id="test-root">Test Root Endpoint</button>
+      <button id="test-health">Test Health Endpoint</button>
+    </div>
+    <div id="api-test-results"></div>
+  </div>
+  
+  <div class="section">
+    <h2>Current Data</h2>
+    <div>
+      <button id="get-current-tab">Get Current Tab</button>
+      <button id="get-analysis-data">Get Analysis Data</button>
+      <button id="clear-data">Clear Stored Data</button>
+    </div>
+    <pre id="current-data">No data loaded yet.</pre>
+  </div>
+  
+  <div class="section">
+    <h2>Log</h2>
+    <div>
+      <button id="clear-log">Clear Log</button>
+    </div>
+    <pre id="log"></pre>
+  </div>
+  
+  <script>
+    // Helper function to log to the page
+    function log(message, isError = false) {
+      const logElement = document.getElementById('log');
+      const timestamp = new Date().toLocaleTimeString();
+      const className = isError ? 'error' : '';
+      
+      logElement.innerHTML = `<div class="${className}">[${timestamp}] ${message}</div>` + logElement.innerHTML;
+      console.log(`[${timestamp}] ${message}`);
+    }
+    
+    // Display environment info
+    function showEnvironmentInfo() {
+      const envElement = document.getElementById('environment-info');
+      
+      // Get extension info
+      try {
+        // Use the hardcoded API URL directly
+        const apiUrl = 'https://truthlens-ii4r.onrender.com';
+        
+        envElement.innerHTML = `
+          <p><strong>Extension ID:</strong> ${chrome.runtime.id}</p>
+          <p><strong>API URL:</strong> ${apiUrl}</p>
+          <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</p>
+        `;
+        
+      } catch (error) {
+        envElement.innerHTML = `<p class="error">Error loading environment info: ${error.message}</p>`;
+      }
+    }
+    
+    // Test API connection
+    function testApiEndpoint(endpoint, displayName) {
+      const resultsElement = document.getElementById('api-test-results');
+      
+      log(`Testing ${displayName}...`);
+      
+      resultsElement.innerHTML = `<p>Testing ${endpoint}...</p>`;
+      
+      // Use the hardcoded API URL directly
+      const apiUrl = 'https://truthlens-ii4r.onrender.com';
+      
+      // Test the API
+      fetch(`${apiUrl}${endpoint}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          log(`${displayName} test successful`);
+          resultsElement.innerHTML = `
+            <p class="success">${displayName} is working!</p>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+          `;
+        })
+        .catch(error => {
+          log(`${displayName} test failed: ${error.message}`, true);
+          resultsElement.innerHTML = `
+            <p class="error">${displayName} test failed: ${error.message}</p>
+            <p>API URL: ${apiUrl}${endpoint}</p>
+          `;
+        });
+    }
+    
+    // Get current tab information
+    function getCurrentTab() {
+      log('Getting current tab info...');
+      
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length === 0) {
+          log('No active tab found', true);
+          document.getElementById('current-data').textContent = 'No active tab found.';
+          return;
+        }
+        
+        const tab = tabs[0];
+        log(`Current tab: ${tab.url}`);
+        document.getElementById('current-data').textContent = JSON.stringify(tab, null, 2);
+      });
+    }
+    
+    // Get analysis data from background script
+    function getAnalysisData() {
+      log('Getting analysis data from background script...');
+      
+      chrome.runtime.sendMessage({ action: 'getAnalysisResult' }, (response) => {
+        if (response && response.data) {
+          log('Analysis data retrieved successfully');
+          document.getElementById('current-data').textContent = JSON.stringify(response.data, null, 2);
+        } else {
+          log('No analysis data available', true);
+          document.getElementById('current-data').textContent = 'No analysis data available.';
+        }
+      });
+    }
+    
+    // Clear stored data
+    function clearStoredData() {
+      log('Clearing stored data...');
+      
+      chrome.storage.local.clear(() => {
+        log('Storage cleared successfully');
+      });
+      
+      // Send message to background script to clear current analysis
+      chrome.runtime.sendMessage({ action: 'clearAnalysisResult' }, (response) => {
+        log('Background script data cleared');
+        document.getElementById('current-data').textContent = 'Data cleared.';
+      });
+    }
+    
+    // Initialize the page
+    document.addEventListener('DOMContentLoaded', () => {
+      // Show environment info
+      showEnvironmentInfo();
+      
+      // Set up button event listeners
+      document.getElementById('test-root').addEventListener('click', () => {
+        testApiEndpoint('/', 'Root endpoint');
+      });
+      
+      document.getElementById('test-health').addEventListener('click', () => {
+        testApiEndpoint('/health', 'Health endpoint');
+      });
+      
+      document.getElementById('get-current-tab').addEventListener('click', getCurrentTab);
+      document.getElementById('get-analysis-data').addEventListener('click', getAnalysisData);
+      document.getElementById('clear-data').addEventListener('click', clearStoredData);
+      
+      document.getElementById('clear-log').addEventListener('click', () => {
+        document.getElementById('log').innerHTML = '';
+      });
+      
+      // Log initial loading
+      log('Debug page loaded');
+    });
+  </script>
+</body>
+</html> 

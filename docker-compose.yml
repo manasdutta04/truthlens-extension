@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Backend API service
+  api:
+    build: ./backend
+    container_name: truthlens-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - WEB3_PROVIDER_URL=${WEB3_PROVIDER_URL:-https://polygon-mumbai-bor.publicnode.com}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS}
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./backend/.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional Redis service for caching
+  redis:
+    image: redis:7-alpine
+    container_name: truthlens-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # NGINX for SSL termination and routing
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: truthlens-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/www:/var/www/html:ro
+    depends_on:
+      - api
+
+volumes:
+  redis-data: 

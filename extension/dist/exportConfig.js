@@ -1,0 +1,1 @@
+window.truthlensConfig={development:{apiUrl:"http://localhost:8000"},production:{apiUrl:"https://truthlens-ii4r.onrender.com"}},window.currentConfig=window.truthlensConfig.production;

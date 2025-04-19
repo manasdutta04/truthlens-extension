@@ -1,0 +1,18 @@
+services:
+  # API service
+  - type: web
+    name: truthlens-api
+    runtime: python
+    rootDir: backend
+    buildCommand: ./build.sh
+    startCommand: gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --workers 4 --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: GOOGLE_FACT_CHECK_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PORT
+        value: 8000
+    healthCheckPath: /healthz 

@@ -1,0 +1,58 @@
+name: TruthLens CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Test with pytest
+      run: |
+        cd backend
+        pytest
+        
+  extension-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: |
+        cd extension
+        npm install
+        
+    - name: Build extension
+      run: |
+        cd extension
+        npm run build:prod
+        
+    - name: Upload extension artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: extension-build
+        path: extension/dist/ 
