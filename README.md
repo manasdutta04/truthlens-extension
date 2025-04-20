@@ -8,6 +8,11 @@ TruthLens is a Chrome extension that uses AI to detect fake news in real-time an
 </p>
 
 
+## 📹 Demo
+
+Check out the [demo video on YouTube](https://youtu.be/E33CvPGcaOw?si=bIOYYvus-FNTQj7j).
+
+
 ## 📋 Overview
 
 TruthLens helps users:
